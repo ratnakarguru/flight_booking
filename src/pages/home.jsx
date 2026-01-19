@@ -15,7 +15,7 @@ const getTodayDate = () => {
   return new Date().toISOString().split('T')[0];
 };
 
-// --- REUSABLE COMPONENT: Airport Search (No changes needed here) ---
+// --- REUSABLE COMPONENT: Airport Search ---
 const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -28,8 +28,7 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
       const filtered = airportList.filter((airport) => {
         const city = airport.city ? airport.city.toLowerCase() : "";
         const code = airport.code ? airport.code.toLowerCase() : "";
-        const search = userInput.toLowerCase();
-        return city.includes(search) || code.includes(search);
+        return city.includes(userInput.toLowerCase()) || code.includes(userInput.toLowerCase());
       }).slice(0, 10);
       setSuggestions(filtered);
       setShowSuggestions(true);
@@ -66,7 +65,7 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
           placeholder={placeholder}
           value={value}
           onChange={handleInputChange}
-          style={{ fontSize: '0.85rem' }} // Compact font
+          style={{ fontSize: '0.85rem' }}
         />
       </div>
       {showSuggestions && suggestions.length > 0 && (
@@ -83,7 +82,7 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
   );
 };
 
-// --- UPDATED COMPONENT: Compact & Responsive Traveller Selector ---
+// --- COMPONENT: Traveller Selector ---
 const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -126,19 +125,8 @@ const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => 
       </div>
 
       {isOpen && (
-        <div
-          className="card position-absolute shadow-lg p-3 mt-1"
-          style={{
-            zIndex: 1060,
-            width: '300px', // Default width
-            maxWidth: '90vw', // Responsive constraint
-            right: 0, // Align to right on desktop
-            left: 'auto'
-          }}
-        >
-          {/* Mobile optimization: Check screen size via CSS classes or keep simplified */}
+        <div className="card position-absolute shadow-lg p-3 mt-1" style={{ zIndex: 1060, width: '300px', right: 0 }}>
           <h6 className="fw-bold mb-3 border-bottom pb-2" style={{ fontSize: '0.9rem' }}>Travellers</h6>
-
           {['adults', 'children', 'infants'].map((type) => (
             <div className="d-flex justify-content-between align-items-center mb-2" key={type}>
               <div>
@@ -154,7 +142,6 @@ const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => 
               </div>
             </div>
           ))}
-
           <h6 className="fw-bold mb-2 border-top pt-2 mt-2" style={{ fontSize: '0.9rem' }}>Class</h6>
           <div className="d-flex flex-wrap gap-1 mb-3">
             {['Economy', 'Business', 'First'].map((cls) => (
@@ -180,17 +167,16 @@ const HeroSection = () => {
   const navigate = useNavigate();
   const [tripType, setTripType] = useState('oneWay');
   const [airportData, setAirportData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // States
+  
+  // Search States
   const [standardFrom, setStandardFrom] = useState('');
   const [standardTo, setStandardTo] = useState('');
   const [standardDate, setStandardDate] = useState(getTodayDate());
   const [returnDate, setReturnDate] = useState('');
-
   const [travellerCounts, setTravellerCounts] = useState({ adults: 1, children: 0, infants: 0 });
   const [cabinClass, setCabinClass] = useState('Economy');
 
+  // Multi-City State
   const [multiCitySegments, setMultiCitySegments] = useState([
     { id: 1, from: '', to: '', date: getTodayDate() }
   ]);
@@ -201,66 +187,54 @@ const HeroSection = () => {
       .then(data => {
         const list = data.map(i => ({ code: i.iata_code, city: i.city, name: i.name })).filter(i => i.code);
         setAirportData(list);
-        setIsLoading(false);
       });
   }, []);
 
-  // inside HeroSection.js
+  // --- SEARCH HANDLER ---
+  const handleSearch = () => {
+    // Validation: Require Return Date if "Return" trip type is selected
+    if (tripType === 'return' && !returnDate) {
+      alert("Please select a return date.");
+      return; 
+    }
 
-const handleSearch = () => {
-  let searchData = {
-    tripType: tripType,
-    travellers: travellerCounts,
-    cabinClass: cabinClass
+    let searchData = {
+      tripType: tripType,
+      travellers: travellerCounts,
+      cabinClass: cabinClass
+    };
+
+    if (tripType === 'multi') {
+      searchData = {
+        ...searchData,
+        type: 'Multi-City',
+        segments: multiCitySegments
+      };
+    } else {
+      searchData = {
+        ...searchData,
+        type: tripType === 'return' ? 'Round Trip' : 'One Way',
+        from: standardFrom,
+        to: standardTo,
+        date: standardDate,
+        returnDate: tripType === 'return' ? returnDate : null // Pass Return Date
+      };
+    }
+
+    console.log("Navigating with:", searchData);
+    navigate('/results', { state: searchData });
   };
 
-  // 1. Check if it's Multi-City
-  if (tripType === 'multi') {
-    searchData = {
-      ...searchData,
-      type: 'Multi-City', 
-      segments: multiCitySegments // <--- PASSING THE SEGMENTS ARRAY
-    };
-  } else {
-    // 2. Standard OneWay / Return
-    searchData = {
-      ...searchData,
-      type: tripType === 'return' ? 'Round Trip' : 'One Way',
-      from: standardFrom,
-      to: standardTo,
-      date: standardDate,
-      returnDate: tripType === 'return' ? returnDate : null
-    };
-  }
-
-  console.log("Sending Data:", searchData); // Debugging
-  navigate('/results', { state: searchData }); // <--- DATA IS NOW SENT
-};
-
+  // Multi-City Helpers
   const handleSegmentChange = (id, field, value) => {
     setMultiCitySegments(multiCitySegments.map(s => s.id === id ? { ...s, [field]: value } : s));
   };
 
-  // --- UPDATED: LOGIC TO COPY PREVIOUS DESTINATION ---
   const handleAddSegment = () => {
     const newId = multiCitySegments.length > 0 ? Math.max(...multiCitySegments.map(s => s.id)) + 1 : 1;
-
-    // 1. Get the last segment
     const lastSegment = multiCitySegments[multiCitySegments.length - 1];
-
-    // 2. Get the 'To' value from the last segment (if it exists)
     const previousDestination = lastSegment ? lastSegment.to : '';
-
-    // 3. Create new segment with 'from' pre-filled
-    setMultiCitySegments([
-      ...multiCitySegments,
-      {
-        id: newId,
-        from: previousDestination, // <--- Logic Applied Here
-        to: '',
-        date: getTodayDate()
-      }
-    ]);
+    setMultiCitySegments([...multiCitySegments, { id: newId, from: previousDestination, to: '', date: getTodayDate() }]);
   };
 
   const handleRemoveSegment = (id) => {
@@ -288,27 +262,28 @@ const handleSearch = () => {
             </div>
 
             {tripType === 'multi' ? (
+              // --- MULTI CITY VIEW ---
               <div className="multi-city-container">
                 {multiCitySegments.map((segment, index) => (
                   <div className="row g-2 align-items-end mb-2" key={segment.id}>
                     <div className="col-6 col-md-3">
-                      <AirportInput
-                        label={index === 0 ? "From" : ""}
-                        icon={<FaPlaneDeparture />}
-                        placeholder="From"
-                        value={segment.from}
-                        onChange={(v) => handleSegmentChange(segment.id, 'from', v)}
-                        airportList={airportData}
+                      <AirportInput 
+                        label={index === 0 ? "From" : ""} 
+                        icon={<FaPlaneDeparture />} 
+                        placeholder="From" 
+                        value={segment.from} 
+                        onChange={(v) => handleSegmentChange(segment.id, 'from', v)} 
+                        airportList={airportData} 
                       />
                     </div>
                     <div className="col-6 col-md-3">
-                      <AirportInput
-                        label={index === 0 ? "To" : ""}
-                        icon={<FaPlaneArrival />}
-                        placeholder="To"
-                        value={segment.to}
-                        onChange={(v) => handleSegmentChange(segment.id, 'to', v)}
-                        airportList={airportData}
+                      <AirportInput 
+                        label={index === 0 ? "To" : ""} 
+                        icon={<FaPlaneArrival />} 
+                        placeholder="To" 
+                        value={segment.to} 
+                        onChange={(v) => handleSegmentChange(segment.id, 'to', v)} 
+                        airportList={airportData} 
                       />
                     </div>
                     <div className="col-6 col-md-2">
@@ -332,27 +307,15 @@ const handleSearch = () => {
                       </>
                     ) : (
                       <div className="col-6 col-md-2 d-flex align-items-center gap-2">
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => handleRemoveSegment(segment.id)}
-                        >
-                          <FaMinus />
-                        </button>
-
-                        <button
-                          className="btn btn-sm btn-outline-primary"
-                          onClick={handleAddSegment}
-                          title="Add Segment"
-                        >
-                          <FaPlus />
-                        </button>
+                        <button className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveSegment(segment.id)}><FaMinus /></button>
+                        <button className="btn btn-sm btn-outline-primary" onClick={handleAddSegment}><FaPlus /></button>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              // Standard View
+              // --- STANDARD VIEW (One Way / Return) ---
               <div className="row g-2">
                 <div className="col-6 col-md-2">
                   <AirportInput label="From" icon={<FaPlaneDeparture />} placeholder="Origin" value={standardFrom} onChange={setStandardFrom} airportList={airportData} />
@@ -364,10 +327,22 @@ const handleSearch = () => {
                   <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Depart</label>
                   <input type="date" className="form-control form-control-sm" value={standardDate} min={getTodayDate()} onChange={(e) => setStandardDate(e.target.value)} />
                 </div>
+                
+                {/* --- RETURN DATE FIELD --- */}
                 <div className="col-6 col-md-2">
-                  <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Return</label>
-                  <input type="date" className="form-control form-control-sm" disabled={tripType === 'oneWay'} min={standardDate} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+                  <label className={`form-label small fw-bold text-uppercase mb-1 ${tripType === 'oneWay' ? 'text-muted' : 'text-dark'}`} style={{ fontSize: '0.7rem' }}>
+                    Return
+                  </label>
+                  <input 
+                    type="date" 
+                    className={`form-control form-control-sm ${tripType === 'return' ? 'bg-white border-primary' : 'bg-light'}`} 
+                    disabled={tripType === 'oneWay'} 
+                    min={standardDate} // Return date cannot be before Departure
+                    value={returnDate} 
+                    onChange={(e) => setReturnDate(e.target.value)} 
+                  />
                 </div>
+
                 <div className="col-12 col-md-2">
                   <TravellerSelector counts={travellerCounts} setCounts={setTravellerCounts} cabinClass={cabinClass} setCabinClass={setCabinClass} />
                 </div>
