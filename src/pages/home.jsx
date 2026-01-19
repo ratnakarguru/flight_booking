@@ -118,7 +118,7 @@ const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => 
         <input
           type="text"
           className="form-control border-0 bg-transparent shadow-none"
-          value={`${total} Pax, ${cabinClass}`}
+          value={`${total} Per, ${cabinClass}`}
           readOnly
           style={{ cursor: 'pointer', fontSize: '0.85rem', textOverflow: 'ellipsis' }}
         />
