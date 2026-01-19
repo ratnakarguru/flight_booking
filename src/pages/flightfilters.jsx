@@ -11,7 +11,7 @@ const FlightFilters = ({
   setSelectedAirlines,
   selectedTimes,
   setSelectedTimes,
-  uniqueAirlines // Receive the real airlines list from parent
+  uniqueAirlines 
 }) => {
 
   // 2. HELPER FUNCTIONS 
