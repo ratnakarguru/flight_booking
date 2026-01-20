@@ -1,27 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  FaPlane,
-  FaChevronLeft,
-  FaChevronRight,
-  FaSuitcase,
-  FaFileInvoiceDollar,
-  FaExchangeAlt,
-  FaAngleDown,
-  FaAngleUp,
-  FaCheckCircle,
-  FaRegCircle,
-  FaCalendarAlt,
-  FaList,
-  FaMapMarkerAlt
+  FaPlane, FaChevronLeft, FaChevronRight, FaExchangeAlt,
+  FaAngleDown, FaAngleUp, FaCheckCircle, FaRegCircle
 } from "react-icons/fa";
 import "bootstrap/dist/css/bootstrap.min.css";
 import FlightFilters from "./flightfilters";
+import ModifySearch from "./modify";
 
-// --- 1. REUSABLE FLIGHT DETAILS PANEL ---
+// --- 1. REUSABLE FLIGHT DETAILS PANEL (Unchanged) ---
 const FlightDetailsPanel = ({ flight, getAirlineLogo, airportMap }) => {
   const [activeTab, setActiveTab] = useState('flight');
-  
   const getCity = (code) => airportMap[code]?.city || code;
   const segments = flight.flights ? flight.flights : [flight];
 
@@ -32,7 +21,6 @@ const FlightDetailsPanel = ({ flight, getAirlineLogo, airportMap }) => {
                 <div className="py-2">
                     {segments.map((f, i) => (
                         <div key={i} className="mb-3 position-relative">
-                            {/* Visual Connector for Multi-Leg in Details */}
                             {i < segments.length - 1 && (
                                 <div className="position-absolute border-start border-2 border-secondary" 
                                      style={{left: '10px', top: '30px', bottom: '-15px', zIndex: 0, opacity: 0.2}}></div>
@@ -114,7 +102,7 @@ const FlightDetailsPanel = ({ flight, getAirlineLogo, airportMap }) => {
   );
 };
 
-// --- 2. CALENDAR COMPONENTS ---
+// --- 2. CALENDAR COMPONENTS (Unchanged) ---
 const CalendarStrip = ({ startDate, selectedDate, onDateSelect, minPrice }) => {
   const [viewStartDate, setViewStartDate] = useState(new Date(startDate || new Date()));
   const [dates, setDates] = useState([]);
@@ -181,7 +169,7 @@ const DualFareCalendar = ({ depDate, retDate, onDepChange, onRetChange }) => (
     </div>
 );
 
-// --- 3. FLIGHT CARDS ---
+// --- 3. FLIGHT CARDS (Unchanged) ---
 const SelectableFlightCard = ({ flight, isSelected, onSelect, getAirlineLogo, airportMap }) => {
   const [showDetails, setShowDetails] = useState(false);
   return (
@@ -215,7 +203,6 @@ const SelectableFlightCard = ({ flight, isSelected, onSelect, getAirlineLogo, ai
   );
 };
 
-// **FIXED StandardFlightCard FOR MULTI-CITY**
 const StandardFlightCard = ({ itinerary, getAirlineLogo, airportMap }) => {
   const [isOpen, setIsOpen] = useState(false);
   const getCity = (code) => airportMap[code]?.city || code;
@@ -223,7 +210,6 @@ const StandardFlightCard = ({ itinerary, getAirlineLogo, airportMap }) => {
 
   return (
     <div className="card border-0 shadow-sm mb-4 bg-white">
-      {/* Header Summary for Multi-City */}
       {itinerary.tripType === 'Multi-City' && (
          <div className="card-header bg-light border-bottom-0 d-flex gap-2 py-2">
              <span className="badge bg-dark">Multi-City</span>
@@ -244,7 +230,6 @@ const StandardFlightCard = ({ itinerary, getAirlineLogo, airportMap }) => {
              <div className="d-flex flex-column gap-3">
                 {itinerary.flights.map((flight, idx) => (
                   <div key={idx} className="d-flex align-items-center border rounded p-2 bg-white position-relative">
-                      {/* Leg Label */}
                       {itinerary.tripType === 'Multi-City' && (
                           <div className="position-absolute start-0 top-0 bg-secondary text-white small px-2 rounded-bottom-end" style={{fontSize:'0.6rem'}}>
                               Leg {idx + 1} • {formatDate(flight.date)}
@@ -304,9 +289,8 @@ const StandardFlightCard = ({ itinerary, getAirlineLogo, airportMap }) => {
 const SearchResults = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const searchParams = location.state || {}; // Handles undefined state safely
+  const searchParams = location.state || {};
   
-  // Independent Dates
   const [depDate, setDepDate] = useState(searchParams.date || new Date().toDateString());
   const [retDate, setRetDate] = useState(searchParams.returnDate || new Date().toDateString());
 
@@ -329,14 +313,6 @@ const SearchResults = () => {
 
   const getCode = (str) => str ? str.match(/\(([^)]+)\)/)?.[1] || str : "";
   
-  // Dynamic Title Logic
-  const getRouteTitle = () => {
-    if (searchParams.type === 'Multi-City') return "Multi-City Trip";
-    const f = getCode(searchParams.from || 'DEL');
-    const t = getCode(searchParams.to || 'BOM');
-    return `${airportMap[f]?.city || f} ${searchParams.type === 'Round Trip' ? '⇄' : '➝'} ${airportMap[t]?.city || t}`;
-  };
-
   useEffect(() => {
     setLoading(true);
     const AIRPORTS_API = 'https://raw.githubusercontent.com/algolia/datasets/master/airports/airports.json';
@@ -349,7 +325,6 @@ const SearchResults = () => {
         setAirportMap(map);
 
         if (searchParams.type === 'Round Trip') {
-            // ... (Round Trip Logic same as before)
             const fromCode = getCode(searchParams.from);
             const toCode = getCode(searchParams.to);
             let outFlights = flightsData.filter(f => f.origin === fromCode && f.destination === toCode);
@@ -358,7 +333,6 @@ const SearchResults = () => {
             if (outFlights.length === 0) outFlights = [{...flightsData[0], origin: fromCode || 'DEL', destination: toCode || 'BOM', price: 5000, id: 901}];
             if (retFlights.length === 0) retFlights = outFlights.map(f => ({...f, origin: toCode || 'BOM', destination: fromCode || 'DEL', id: f.id + 100}));
 
-            // Date & Price Randomization
             const depRand = Math.floor(Math.random() * 500); 
             const retRand = Math.floor(Math.random() * 500); 
             outFlights = outFlights.map(f => ({ ...f, date: depDate, price: f.price + depRand }));
@@ -370,18 +344,11 @@ const SearchResults = () => {
             if(!selectedReturnId && retFlights[0]) setSelectedReturnId(retFlights[0].id);
 
         } else if (searchParams.type === 'Multi-City') {
-            // **FIXED MULTI-CITY LOGIC**
-            // Fallback if segments are missing
             const segments = searchParams.segments && searchParams.segments.length > 0 
                 ? searchParams.segments 
-                : [
-                    {from: 'DEL', to: 'BOM', date: new Date().toDateString()},
-                    {from: 'BOM', to: 'BLR', date: new Date(new Date().setDate(new Date().getDate() + 2)).toDateString()}
-                  ];
+                : [{from: 'DEL', to: 'BOM', date: new Date().toDateString()}, {from: 'BOM', to: 'BLR', date: new Date().toDateString()}];
 
             const constructedItineraries = [];
-            
-            // Create 5 mock itinerary options
             for(let i=0; i<5; i++) { 
                 const itineraryFlights = [];
                 let totalPrice = 0;
@@ -389,10 +356,8 @@ const SearchResults = () => {
                 segments.forEach((seg, idx) => {
                     const fCode = getCode(seg.from);
                     const tCode = getCode(seg.to);
-                    // Find a flight or use a fallback
                     let matches = flightsData.filter(f => f.origin === fCode && f.destination === tCode);
                     if(matches.length === 0) matches = [{...flightsData[0], origin: fCode, destination: tCode, price: 4000 + (idx*1000), id: 999+i+idx}];
-                    
                     const flight = matches[i % matches.length];
                     itineraryFlights.push({...flight, date: seg.date, price: flight.price});
                     totalPrice += flight.price;
@@ -408,7 +373,7 @@ const SearchResults = () => {
             setItineraries(constructedItineraries);
 
         } else {
-            // One Way Logic
+            // One Way
             const fromCode = getCode(searchParams.from);
             const toCode = getCode(searchParams.to);
             let matches = flightsData.filter(f => f.origin === fromCode && f.destination === toCode);
@@ -425,29 +390,80 @@ const SearchResults = () => {
     return logos[name] || null;
   };
 
-  const filterList = (list) => list.filter(f => (!priceRange || f.price <= priceRange) && (selectedStops.length === 0 || selectedStops.includes(f.stops)) && (selectedAirlines.length === 0 || selectedAirlines.includes(f.airline)));
+  // --- FILTERING LOGIC ---
 
-  const filteredOutbound = filterList(outboundList);
-  const filteredReturn = filterList(returnList);
+  // Helper: Check if a time string (HH:MM) matches selected buckets
+  const checkTimeMatch = (timeStr, selectedTimes) => {
+    if (!selectedTimes || selectedTimes.length === 0) return true;
+    const hour = parseInt(timeStr.split(':')[0], 10);
+    
+    return selectedTimes.some(period => {
+        if (period === 'Before 6 AM') return hour < 6;
+        if (period === '6 AM - 12 PM') return hour >= 6 && hour < 12;
+        if (period === '12 PM - 6 PM') return hour >= 12 && hour < 18;
+        if (period === 'After 6 PM') return hour >= 18;
+        return false;
+    });
+  };
+
+  // Master Filter Function
+  const filterItem = (item) => {
+    // Standardize: item could be a Flight object (RoundTrip) or Itinerary object (OneWay/Multi)
+    // Extract price and flight list for checking
+    const price = item.totalPrice || item.price;
+    const flights = item.flights ? item.flights : [item]; // If no .flights array, it's a single flight object
+    const firstFlight = flights[0];
+    const lastFlight = flights[flights.length - 1];
+
+    // 1. Price Check
+    if (price > priceRange) return false;
+
+    // 2. Stops Check (Check if any flight in the itinerary matches the stop preference, or if strict, all must match)
+    // For simplicity: If *any* flight in the chain has the selected stop count, we show it? 
+    // Usually, "Non-Stop" means the whole trip is non-stop. 
+    if (selectedStops.length > 0) {
+        // If itinerary has multiple legs (Multi-City), "Non-Stop" applies to individual legs usually.
+        // Let's check if ALL legs match the criteria (STRICT) or ANY (LOOSE). 
+        // Let's go with: If any selected stop preference exists in the flight legs
+        const hasMatch = flights.every(f => selectedStops.includes(f.stops));
+        if (!hasMatch) return false;
+    }
+
+    // 3. Airline Check
+    if (selectedAirlines.length > 0) {
+        // If One-Way/Multi, all flights must be in selected airlines
+        const hasMatch = flights.every(f => selectedAirlines.includes(f.airline));
+        if (!hasMatch) return false;
+    }
+
+    // 4. Time Check
+    // Departure: Check First Flight
+    if (!checkTimeMatch(firstFlight.departureTime, selectedDepTimes)) return false;
+    
+    // Arrival: Check Last Flight
+    if (!checkTimeMatch(lastFlight.arrivalTime, selectedArrTimes)) return false;
+
+    return true;
+  };
+
+  // Apply Filters
+  const filteredOutbound = outboundList.filter(filterItem);
+  const filteredReturn = returnList.filter(filterItem);
+  
+  // !!! CRITICAL FIX: Apply filter to itineraries for One Way / Multi City !!!
+  const filteredItineraries = itineraries.filter(filterItem);
+
   const selectedOutbound = outboundList.find(f => f.id === selectedOutboundId);
   const selectedReturn = returnList.find(f => f.id === selectedReturnId);
   const grandTotal = (selectedOutbound?.price || 0) + (selectedReturn?.price || 0);
+  
   const uniqueAirlines = [...new Set([...outboundList, ...returnList, ...itineraries.flatMap(i => i.flights.map(f=>f.airline))].map(f => f.airline || f))];
 
   return (
     <div className="bg-light min-vh-100 pb-5">
-      {/* Header */}
-      <div className="bg-dark text-white py-3 sticky-top shadow-sm" style={{ zIndex: 1020 }}>
-        <div className="container d-flex justify-content-between align-items-center">
-            <div>
-              <h5 className="mb-0 fw-bold">{getRouteTitle()}</h5>
-              <small className="text-white-50">{searchParams.type || 'One Way'} | Economy</small>
-            </div>
-            <button className="btn btn-sm btn-outline-light rounded-pill px-4" onClick={() => navigate("/")}>Modify</button>
-        </div>
-      </div>
-
-      {/* Render Dual Calendar for Round Trip, Single for others */}
+      
+      <ModifySearch />
+      
       {searchParams.type === 'Round Trip' ? (
           <DualFareCalendar depDate={depDate} retDate={retDate} onDepChange={setDepDate} onRetChange={setRetDate} />
       ) : (
@@ -472,13 +488,17 @@ const SearchResults = () => {
                         <div className="col-md-6">
                             <div className="bg-white border rounded p-2" style={{minHeight: '500px'}}>
                                 <div className="text-muted small fw-bold mb-2">Select Departure</div>
-                                {filteredOutbound.map(f => <SelectableFlightCard key={f.id} flight={f} isSelected={selectedOutboundId === f.id} onSelect={(x) => setSelectedOutboundId(x.id)} getAirlineLogo={getAirlineLogo} airportMap={airportMap}/>)}
+                                {filteredOutbound.length > 0 ? (
+                                    filteredOutbound.map(f => <SelectableFlightCard key={f.id} flight={f} isSelected={selectedOutboundId === f.id} onSelect={(x) => setSelectedOutboundId(x.id)} getAirlineLogo={getAirlineLogo} airportMap={airportMap}/>)
+                                ) : <div className="text-center text-muted mt-5 small">No flights match filters</div>}
                             </div>
                         </div>
                         <div className="col-md-6">
                             <div className="bg-white border rounded p-2" style={{minHeight: '500px'}}>
                                 <div className="text-muted small fw-bold mb-2">Select Return</div>
-                                {filteredReturn.map(f => <SelectableFlightCard key={f.id} flight={f} isSelected={selectedReturnId === f.id} onSelect={(x) => setSelectedReturnId(x.id)} getAirlineLogo={getAirlineLogo} airportMap={airportMap}/>)}
+                                {filteredReturn.length > 0 ? (
+                                    filteredReturn.map(f => <SelectableFlightCard key={f.id} flight={f} isSelected={selectedReturnId === f.id} onSelect={(x) => setSelectedReturnId(x.id)} getAirlineLogo={getAirlineLogo} airportMap={airportMap}/>)
+                                ) : <div className="text-center text-muted mt-5 small">No flights match filters</div>}
                             </div>
                         </div>
                     </div>
@@ -508,11 +528,15 @@ const SearchResults = () => {
                 <>
                     <div className="d-flex justify-content-between align-items-center mb-3">
                         <h5 className="fw-bold text-dark mb-0">Available Flights</h5>
-                        <span className="badge bg-dark">{itineraries.length} Options</span>
+                        <span className="badge bg-dark">{filteredItineraries.length} Options</span>
                     </div>
-                    {itineraries.map((itinerary) => (
-                        <StandardFlightCard key={itinerary.id} itinerary={itinerary} getAirlineLogo={getAirlineLogo} airportMap={airportMap} />
-                    ))}
+                    {filteredItineraries.length > 0 ? (
+                        filteredItineraries.map((itinerary) => (
+                            <StandardFlightCard key={itinerary.id} itinerary={itinerary} getAirlineLogo={getAirlineLogo} airportMap={airportMap} />
+                        ))
+                    ) : (
+                        <div className="alert alert-warning text-center">No flights found matching your filters.</div>
+                    )}
                 </>
             )}
           </div>
