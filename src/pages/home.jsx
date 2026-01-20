@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. Import hook
-import { 
-  FaPlaneDeparture, 
-  FaPlaneArrival, 
-  FaCalendarAlt, 
-  FaUser, 
-  FaPlus, 
+import { useNavigate } from 'react-router-dom';
+import {
+  FaPlaneDeparture,
+  FaPlaneArrival,
+  FaCalendarAlt,
+  FaUser,
+  FaPlus,
   FaMinus
 } from 'react-icons/fa';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-// --- 1. HELPER: Get Today's Date in YYYY-MM-DD format ---
+// --- HELPER: Get Today's Date ---
 const getTodayDate = () => {
   return new Date().toISOString().split('T')[0];
 };
 
-// --- 2. REUSABLE COMPONENT: Real-Time Airport Search (FIXED VISIBILITY) ---
+// --- REUSABLE COMPONENT: Airport Search ---
 const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -23,18 +23,13 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
 
   const handleInputChange = (e) => {
     const userInput = e.target.value;
-    onChange(userInput); 
-
-    if (userInput.length > 1) { 
+    onChange(userInput);
+    if (userInput.length > 1) {
       const filtered = airportList.filter((airport) => {
         const city = airport.city ? airport.city.toLowerCase() : "";
         const code = airport.code ? airport.code.toLowerCase() : "";
-        const name = airport.name ? airport.name.toLowerCase() : "";
-        const search = userInput.toLowerCase();
-
-        return city.includes(search) || code.includes(search) || name.includes(search);
-      }).slice(0, 10); 
-      
+        return city.includes(userInput.toLowerCase()) || code.includes(userInput.toLowerCase());
+      }).slice(0, 10);
       setSuggestions(filtered);
       setShowSuggestions(true);
     } else {
@@ -43,7 +38,7 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
   };
 
   const handleSelect = (airport) => {
-    const city = airport.city || "Unknown City";
+    const city = airport.city || "Unknown";
     const code = airport.code || "N/A";
     onChange(`${city} (${code})`);
     setShowSuggestions(false);
@@ -61,40 +56,24 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
 
   return (
     <div className="position-relative" ref={wrapperRef}>
-      {label && <label className="form-label text-muted small fw-bold text-uppercase">{label}</label>}
+      {label && <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>{label}</label>}
       <div className="input-group input-group-sm">
         <span className="input-group-text bg-light border-end-0 text-secondary">{icon}</span>
-        <input 
-          type="text" 
-          className="form-control border-start-0 ps-0 bg-light" 
+        <input
+          type="text"
+          className="form-control border-start-0 ps-0 bg-light shadow-none"
           placeholder={placeholder}
           value={value}
           onChange={handleInputChange}
-          onFocus={() => value && value.length > 1 && setShowSuggestions(true)}
+          style={{ fontSize: '0.85rem' }}
         />
       </div>
-
-      {/* Dropdown Results */}
       {showSuggestions && suggestions.length > 0 && (
-        <ul className="list-group position-absolute w-100 shadow-lg" style={{ zIndex: 1000, maxHeight: '300px', overflowY: 'auto' }}>
+        <ul className="list-group position-absolute w-100 shadow-lg start-0" style={{ zIndex: 1050, top: '100%', maxHeight: '200px', overflowY: 'auto' }}>
           {suggestions.map((airport, idx) => (
-            <li 
-              key={`${airport.code}-${idx}`} 
-              className="list-group-item list-group-item-action py-2" // Added padding
-              style={{ cursor: 'pointer', fontSize: '0.9rem' }}
-              onClick={() => handleSelect(airport)}
-            >
-              {/* City and Code */}
-              <div className="fw-bold text-dark d-flex justify-content-between">
-                <span>{airport.city || "Unknown City"}</span>
-                <span className="text-primary fw-bold">{airport.code}</span>
-              </div>
-              
-              {/* Airport Name - UPDATED HERE */}
-              <div className="text-secondary small text-wrap lh-sm mt-1">
-                <i className="fas fa-plane me-1"></i> {/* Optional: visual cue */}
-                {airport.name || "Airport"}, {airport.country || ""}
-              </div>
+            <li key={idx} className="list-group-item list-group-item-action py-2" onClick={() => handleSelect(airport)} style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
+              <div className="fw-bold">{airport.city} <span className="text-primary">{airport.code}</span></div>
+              <div className="text-secondary small">{airport.name}</div>
             </li>
           ))}
         </ul>
@@ -102,83 +81,200 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
     </div>
   );
 };
-// --- 3. MAIN HERO SECTION ---
+
+// --- COMPONENT: Traveller Selector (UPDATED DISPLAY) ---
+const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [wrapperRef]);
+
+  const updateCount = (type, operation) => {
+    setCounts(prev => {
+      let newVal = operation === 'inc' ? prev[type] + 1 : prev[type] - 1;
+      if (newVal < 0) newVal = 0;
+      if (type === 'adults' && newVal < 1) newVal = 1; // Min 1 adult
+      return { ...prev, [type]: newVal };
+    });
+  };
+
+  // --- LOGIC: Create a string like "2 Adt, 1 Chd, Economy" ---
+  const getTravellerSummary = () => {
+    let parts = [];
+    if (counts.adults > 0) parts.push(`${counts.adults} Adt`);
+    if (counts.children > 0) parts.push(`${counts.children} Chd`);
+    if (counts.infants > 0) parts.push(`${counts.infants} Inf`);
+    
+    // Fallback if empty (shouldn't happen due to min 1 adult)
+    const paxString = parts.length > 0 ? parts.join(', ') : '1 Traveller';
+    
+    return `${paxString}, ${cabinClass}`;
+  };
+
+  return (
+    <div className="position-relative w-100" ref={wrapperRef}>
+      <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Travellers</label>
+      <div
+        className="input-group input-group-sm bg-light border rounded"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ cursor: 'pointer' }}
+      >
+        <input
+          type="text"
+          className="form-control border-0 bg-transparent shadow-none"
+          value={getTravellerSummary()} // <--- Using new summary function
+          readOnly
+          style={{ cursor: 'pointer', fontSize: '0.8rem', textOverflow: 'ellipsis' }}
+        />
+        <span className="input-group-text border-0 bg-transparent"><FaUser size={12} className="text-secondary" /></span>
+      </div>
+
+      {isOpen && (
+        <div className="card position-absolute shadow-lg p-3 mt-1" style={{ zIndex: 1060, width: '300px', right: 0 }}>
+          <h6 className="fw-bold mb-3 border-bottom pb-2" style={{ fontSize: '0.9rem' }}>Travellers</h6>
+          
+          {/* Adults */}
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <div className="fw-bold text-capitalize" style={{ fontSize: '0.85rem' }}>Adults</div>
+              <small className="text-muted" style={{ fontSize: '0.7rem' }}>(12+ Yrs)</small>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <button className="btn btn-sm btn-outline-secondary p-0 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }} onClick={() => updateCount('adults', 'dec')}><FaMinus size={8} /></button>
+              <span className="fw-bold text-center" style={{ width: '20px', fontSize: '0.9rem' }}>{counts.adults}</span>
+              <button className="btn btn-sm btn-outline-primary p-0 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }} onClick={() => updateCount('adults', 'inc')}><FaPlus size={8} /></button>
+            </div>
+          </div>
+
+          {/* Children */}
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <div className="fw-bold text-capitalize" style={{ fontSize: '0.85rem' }}>Children</div>
+              <small className="text-muted" style={{ fontSize: '0.7rem' }}>(2-12 Yrs)</small>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <button className="btn btn-sm btn-outline-secondary p-0 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }} onClick={() => updateCount('children', 'dec')}><FaMinus size={8} /></button>
+              <span className="fw-bold text-center" style={{ width: '20px', fontSize: '0.9rem' }}>{counts.children}</span>
+              <button className="btn btn-sm btn-outline-primary p-0 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }} onClick={() => updateCount('children', 'inc')}><FaPlus size={8} /></button>
+            </div>
+          </div>
+
+          {/* Infants */}
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <div className="fw-bold text-capitalize" style={{ fontSize: '0.85rem' }}>Infants</div>
+              <small className="text-muted" style={{ fontSize: '0.7rem' }}>(0-2 Yrs)</small>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <button className="btn btn-sm btn-outline-secondary p-0 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }} onClick={() => updateCount('infants', 'dec')}><FaMinus size={8} /></button>
+              <span className="fw-bold text-center" style={{ width: '20px', fontSize: '0.9rem' }}>{counts.infants}</span>
+              <button className="btn btn-sm btn-outline-primary p-0 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }} onClick={() => updateCount('infants', 'inc')}><FaPlus size={8} /></button>
+            </div>
+          </div>
+
+          <h6 className="fw-bold mb-2 border-top pt-2 mt-2" style={{ fontSize: '0.9rem' }}>Class</h6>
+          <div className="d-flex flex-wrap gap-1 mb-3">
+            {['Economy', 'Premium', 'Business', 'First'].map((cls) => (
+              <button
+                key={cls}
+                className={`btn btn-sm flex-grow-1 ${cabinClass === cls ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => setCabinClass(cls)}
+                style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+              >
+                {cls}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-primary w-100 btn-sm" onClick={() => setIsOpen(false)}>Done</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- MAIN HERO SECTION ---
 const HeroSection = () => {
-  const navigate = useNavigate(); // 2. Initialize Navigation
-  
+  const navigate = useNavigate();
   const [tripType, setTripType] = useState('oneWay');
   const [airportData, setAirportData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Standard View State
+  
+  // Search States
   const [standardFrom, setStandardFrom] = useState('');
   const [standardTo, setStandardTo] = useState('');
-  const [standardDate, setStandardDate] = useState(getTodayDate()); 
+  const [standardDate, setStandardDate] = useState(getTodayDate());
   const [returnDate, setReturnDate] = useState('');
+  const [travellerCounts, setTravellerCounts] = useState({ adults: 1, children: 0, infants: 0 });
+  const [cabinClass, setCabinClass] = useState('Economy');
 
   // Multi-City State
   const [multiCitySegments, setMultiCitySegments] = useState([
     { id: 1, from: '', to: '', date: getTodayDate() }
   ]);
 
-useEffect(() => {
-    // Using Algolia's public airport dataset (Fast & Reliable)
+  useEffect(() => {
     fetch('https://raw.githubusercontent.com/algolia/datasets/master/airports/airports.json')
-      .then(response => response.json())
+      .then(res => res.json())
       .then(data => {
-        // Map the raw data to a cleaner format
-        const formattedAirports = data.map(item => ({
-          code: item.iata_code,
-          city: item.city,
-          name: item.name,
-          country: item.country
-        })).filter(item => item.code); // Ensure code exists
-        
-        setAirportData(formattedAirports);
-        setIsLoading(false);
-      })
-      .catch(err => console.error("Failed to load airports", err));
+        const list = data.map(i => ({ code: i.iata_code, city: i.city, name: i.name })).filter(i => i.code);
+        setAirportData(list);
+      });
   }, []);
 
-  // --- HANDLE SEARCH (Moved here correctly) ---
+  // --- SEARCH HANDLER ---
   const handleSearch = () => {
-    let searchData = {};
+    // Validation: Require Return Date if "Return" trip type is selected
+    if (tripType === 'return' && !returnDate) {
+      alert("Please select a return date.");
+      return; 
+    }
+
+    let searchData = {
+      tripType: tripType,
+      travellers: travellerCounts, // Passing full object {adults, children, infants}
+      cabinClass: cabinClass
+    };
 
     if (tripType === 'multi') {
       searchData = {
+        ...searchData,
         type: 'Multi-City',
-        segments: multiCitySegments,
-        travellers: '1 Adult'
+        segments: multiCitySegments
       };
     } else {
       searchData = {
+        ...searchData,
         type: tripType === 'return' ? 'Round Trip' : 'One Way',
         from: standardFrom,
         to: standardTo,
         date: standardDate,
-        returnDate: tripType === 'return' ? returnDate : null,
-        travellers: '1 Adult'
+        returnDate: tripType === 'return' ? returnDate : null // <--- Pass Return Date
       };
     }
 
-    // Navigate to Results Page with Data
+    console.log("Navigating with:", searchData);
     navigate('/results', { state: searchData });
   };
 
+  // Multi-City Helpers
   const handleSegmentChange = (id, field, value) => {
-    const updatedSegments = multiCitySegments.map(segment =>
-      segment.id === id ? { ...segment, [field]: value } : segment
-    );
-    setMultiCitySegments(updatedSegments);
+    setMultiCitySegments(multiCitySegments.map(s => s.id === id ? { ...s, [field]: value } : s));
   };
 
   const handleAddSegment = () => {
     const newId = multiCitySegments.length > 0 ? Math.max(...multiCitySegments.map(s => s.id)) + 1 : 1;
-    setMultiCitySegments([...multiCitySegments, { id: newId, from: '', to: '', date: getTodayDate() }]);
+    const lastSegment = multiCitySegments[multiCitySegments.length - 1];
+    const previousDestination = lastSegment ? lastSegment.to : '';
+    setMultiCitySegments([...multiCitySegments, { id: newId, from: previousDestination, to: '', date: getTodayDate() }]);
   };
 
   const handleRemoveSegment = (id) => {
-    setMultiCitySegments(multiCitySegments.filter(segment => segment.id !== id));
+    setMultiCitySegments(multiCitySegments.filter(s => s.id !== id));
   };
 
   const bgImage = "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80";
@@ -195,111 +291,72 @@ useEffect(() => {
         paddingTop: '80px', paddingBottom: '80px'
       }}
     >
-      <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark opacity-50"></div>
-
-      <div className="container position-relative z-1">
+      <div className="container">
         <div className="card border-0 shadow-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)' }}>
-          <div className="card-body p-4">
-            
+          <div className="card-body p-3 p-md-4">
+
             {/* Tabs */}
-            <div className="d-flex gap-2 mb-4 overflow-auto pb-2">
+            <div className="d-flex gap-2 mb-4 overflow-auto pb-1">
               {['oneWay', 'return', 'multi'].map((type) => (
                 <button
                   key={type}
                   onClick={() => setTripType(type)}
-                  className={`btn rounded-pill px-4 fw-bold text-nowrap ${tripType === type ? 'btn-dark' : 'btn-outline-secondary'}`}
-                  style={{ fontSize: '0.9rem' }}
+                  className={`btn rounded-pill px-3 py-1 fw-bold text-nowrap ${tripType === type ? 'btn-dark' : 'btn-outline-secondary'}`}
+                  style={{ fontSize: '0.8rem' }}
                 >
                   {type === 'oneWay' ? 'ONE WAY' : type === 'return' ? 'RETURN' : 'MULTI CITY'}
                 </button>
               ))}
             </div>
 
-            {/* --- MULTI CITY LOGIC --- */}
             {tripType === 'multi' ? (
+              // --- MULTI CITY VIEW ---
               <div className="multi-city-container">
                 {multiCitySegments.map((segment, index) => (
                   <div className="row g-2 align-items-end mb-2" key={segment.id}>
-                    
-                    {/* From */}
-                    <div className="col-lg-2 col-md-6">
+                    <div className="col-6 col-md-3">
                       <AirportInput 
-                        label={index === 0 ? "From" : null}
-                        icon={<FaPlaneDeparture />}
-                        placeholder={isLoading ? "Loading..." : "From City"}
-                        value={segment.from}
-                        onChange={(val) => handleSegmentChange(segment.id, 'from', val)}
+                        label={index === 0 ? "From" : ""} 
+                        icon={<FaPlaneDeparture />} 
+                        placeholder="From" 
+                        value={segment.from} 
+                        onChange={(v) => handleSegmentChange(segment.id, 'from', v)} 
                         airportList={airportData} 
                       />
                     </div>
-
-                    {/* To */}
-                    <div className="col-lg-2 col-md-6">
+                    <div className="col-6 col-md-3">
                       <AirportInput 
-                        label={index === 0 ? "To" : null}
-                        icon={<FaPlaneArrival />}
-                        placeholder={isLoading ? "Loading..." : "To City"}
-                        value={segment.to}
-                        onChange={(val) => handleSegmentChange(segment.id, 'to', val)}
-                        airportList={airportData}
+                        label={index === 0 ? "To" : ""} 
+                        icon={<FaPlaneArrival />} 
+                        placeholder="To" 
+                        value={segment.to} 
+                        onChange={(v) => handleSegmentChange(segment.id, 'to', v)} 
+                        airportList={airportData} 
                       />
                     </div>
-
-                    {/* Date */}
-                    <div className="col-lg-2 col-md-6">
-                      {index === 0 && <label className="form-label text-muted small fw-bold text-uppercase">Date</label>}
-                      <div className="input-group input-group-sm">
-                        <input 
-                          type="date" 
-                          className="form-control border-end-0 bg-light" 
-                          value={segment.date} 
-                          min={getTodayDate()} 
-                          onChange={(e) => handleSegmentChange(segment.id, 'date', e.target.value)}
-                        />
-                      </div>
+                    <div className="col-6 col-md-2">
+                      {index === 0 && <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Date</label>}
+                      <input type="date" className="form-control form-control-sm bg-light border-1" value={segment.date} min={getTodayDate()} onChange={(e) => handleSegmentChange(segment.id, 'date', e.target.value)} />
                     </div>
 
-                    {/* Row 1 Actions */}
                     {index === 0 ? (
                       <>
-                        <div className="col-lg-2 col-md-6">
-                          <label className="form-label text-muted small fw-bold text-uppercase">Travellers</label>
-                          <div className="input-group input-group-sm">
-                            <input type="text" className="form-control border-end-0 bg-light" placeholder="1 Adult" />
-                            <span className="input-group-text bg-light border-start-0"><FaUser className="text-secondary" /></span>
-                          </div>
+                        <div className="col-6 col-md-2">
+                          <TravellerSelector counts={travellerCounts} setCounts={setTravellerCounts} cabinClass={cabinClass} setCabinClass={setCabinClass} />
                         </div>
-
-                        <div className="col-lg-2 col-md-6 d-grid">
-                           <label className="form-label d-none d-lg-block">&nbsp;</label> 
-                           <button 
-                            className="btn fw-bold text-white py-2" 
-                            style={{ backgroundColor: '#ff6b00' }}
-                            onClick={handleSearch}>SEARCH</button>
+                        <div className="col-6 col-md-1 d-grid">
+                          <label className="d-none d-md-block">&nbsp;</label>
+                          <button className="btn btn-sm btn-dark" onClick={handleAddSegment} title="Add Segment"><FaPlus /></button>
                         </div>
-
-                        <div className="col-lg-2 col-md-6 d-flex align-items-end">
-                          <label className="form-label d-none d-lg-block">&nbsp;</label> 
-                          <button 
-                            className="btn btn-sm btn-outline-dark rounded-circle d-flex align-items-center justify-content-center ms-2"
-                            style={{ width: '32px', height: '32px' }}
-                            onClick={handleAddSegment}
-                            title="Add Flight"
-                          >
-                            <FaPlus size={10} />
-                          </button>
+                        <div className="col-6 col-md-1 d-grid">
+                          <label className="d-none d-md-block">&nbsp;</label>
+                          <button className="btn btn-sm text-white fw-bold" style={{ backgroundColor: '#ff6b00' }} onClick={handleSearch}>Search</button>
                         </div>
                       </>
                     ) : (
-                      // Subsequent Rows
-                      <div className="col-lg-2 col-md-6 d-flex align-items-end pb-1">
-                        <button 
-                          className="btn btn-sm btn-outline-danger rounded-circle d-flex align-items-center justify-content-center"
-                          style={{ width: '32px', height: '32px' }}
-                          onClick={() => handleRemoveSegment(segment.id)}
-                        >
-                          <FaMinus size={10} />
-                        </button>
+                      <div className="col-6 col-md-2 d-flex align-items-center gap-2">
+                        <button className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveSegment(segment.id)}><FaMinus /></button>
+                        <button className="btn btn-sm btn-outline-primary" onClick={handleAddSegment}><FaPlus /></button>
                       </div>
                     )}
                   </div>
@@ -307,74 +364,41 @@ useEffect(() => {
               </div>
             ) : (
               // --- STANDARD VIEW (One Way / Return) ---
-              <div className="row g-3">
-                <div className="col-md-6 col-lg-2">
-                  <AirportInput 
-                    label="From"
-                    icon={<FaPlaneDeparture />}
-                    placeholder={isLoading ? "Loading..." : "From City"}
-                    value={standardFrom}
-                    onChange={setStandardFrom}
-                    airportList={airportData}
+              <div className="row g-2">
+                <div className="col-6 col-md-2">
+                  <AirportInput label="From" icon={<FaPlaneDeparture />} placeholder="Origin" value={standardFrom} onChange={setStandardFrom} airportList={airportData} />
+                </div>
+                <div className="col-6 col-md-2">
+                  <AirportInput label="To" icon={<FaPlaneArrival />} placeholder="Dest" value={standardTo} onChange={setStandardTo} airportList={airportData} />
+                </div>
+                <div className="col-6 col-md-2">
+                  <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Depart</label>
+                  <input type="date" className="form-control form-control-sm" value={standardDate} min={getTodayDate()} onChange={(e) => setStandardDate(e.target.value)} />
+                </div>
+                
+                {/* --- RETURN DATE FIELD --- */}
+                <div className="col-6 col-md-2">
+                  <label className={`form-label small fw-bold text-uppercase mb-1 ${tripType === 'oneWay' ? 'text-muted' : 'text-dark'}`} style={{ fontSize: '0.7rem' }}>
+                    Return
+                  </label>
+                  <input 
+                    type="date" 
+                    className={`form-control form-control-sm ${tripType === 'return' ? 'bg-white border-primary' : 'bg-light'}`} 
+                    disabled={tripType === 'oneWay'} 
+                    min={standardDate} 
+                    value={returnDate} 
+                    onChange={(e) => setReturnDate(e.target.value)} 
                   />
                 </div>
-                <div className="col-md-6 col-lg-2">
-                  <AirportInput 
-                    label="To"
-                    icon={<FaPlaneArrival />}
-                    placeholder={isLoading ? "Loading..." : "To City"}
-                    value={standardTo}
-                    onChange={setStandardTo}
-                    airportList={airportData}
-                  />
+
+                <div className="col-12 col-md-2">
+                  <TravellerSelector counts={travellerCounts} setCounts={setTravellerCounts} cabinClass={cabinClass} setCabinClass={setCabinClass} />
                 </div>
-                <div className="col-md-6 col-lg-2">
-                  <label className="form-label text-muted small fw-bold text-uppercase">Departure</label>
-                  <div className="input-group">
-                    <input 
-                       type="date" 
-                       className="form-control border-end-0" 
-                       value={standardDate} 
-                       min={getTodayDate()} 
-                       onChange={(e) => setStandardDate(e.target.value)}
-                    />
-                    <span className="input-group-text bg-white border-start-0"><FaCalendarAlt className="text-secondary" /></span>
-                  </div>
-                </div>
-                <div className="col-md-6 col-lg-2">
-                  <label className="form-label text-muted small fw-bold text-uppercase">Return</label>
-                  <div className="input-group">
-                    <input 
-                      type="date" 
-                      className="form-control border-end-0" 
-                      disabled={tripType === 'oneWay'} 
-                      min={standardDate} 
-                      value={returnDate}
-                      onChange={(e) => setReturnDate(e.target.value)}
-                    />
-                    <span className="input-group-text bg-white border-start-0"><FaCalendarAlt className="text-secondary" /></span>
-                  </div>
-                </div>
-                <div className="col-md-12 col-lg-2">
-                  <label className="form-label text-muted small fw-bold text-uppercase">Travellers</label>
-                  <div className="input-group">
-                    <input type="text" className="form-control border-end-0" placeholder="1 Adult" />
-                    <span className="input-group-text bg-white border-start-0"><FaUser className="text-secondary" /></span>
-                  </div>
-                </div>
-                <div className="col-md-12 col-lg-2 d-grid align-items-end">
-                  {/* Fixed: Added onClick handler here */}
-                  <button 
-                    className="btn fw-bold text-white py-2" 
-                    style={{ backgroundColor: brandOrange }}
-                    onClick={handleSearch}
-                  >
-                    SEARCH
-                  </button>
+                <div className="col-12 col-md-2 d-grid align-items-end">
+                  <button className="btn btn-sm fw-bold text-white py-2" style={{ backgroundColor: '#ff6b00' }} onClick={handleSearch}>SEARCH</button>
                 </div>
               </div>
             )}
-
           </div>
         </div>
       </div>

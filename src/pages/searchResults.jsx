@@ -12,356 +12,226 @@ import {
 } from 'react-icons/fa';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-
 const SearchResults = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const searchParams = location.state || {}; // Handles undefined state safely
   
-  const searchParams = location.state || {};
-  const { from, to, date } = searchParams;
+  // Independent Dates
+  const [depDate, setDepDate] = useState(searchParams.date || new Date().toDateString());
+  const [retDate, setRetDate] = useState(searchParams.returnDate || new Date().toDateString());
 
-  // --- STATE ---
-  const [allFlights, setAllFlights] = useState([]); // Stores raw data
-  const [filteredFlights, setFilteredFlights] = useState([]); // Stores filtered data
+  const [itineraries, setItineraries] = useState([]); 
+  const [outboundList, setOutboundList] = useState([]); 
+  const [returnList, setReturnList] = useState([]); 
+  
+  const [selectedOutboundId, setSelectedOutboundId] = useState(null);
+  const [selectedReturnId, setSelectedReturnId] = useState(null);
+
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [airportMap, setAirportMap] = useState({});
+  const [priceRange, setPriceRange] = useState(50000);
 
-  // --- FILTER STATES ---
-  const [priceRange, setPriceRange] = useState(15000);
+  // Filters
   const [selectedStops, setSelectedStops] = useState([]);
   const [selectedAirlines, setSelectedAirlines] = useState([]);
-  const [selectedTimes, setSelectedTimes] = useState([]);
+  const [selectedDepTimes, setSelectedDepTimes] = useState([]);
+  const [selectedArrTimes, setSelectedArrTimes] = useState([]); 
 
-  // --- HELPER: Extract Airport Code ---
-  const getCode = (str) => {
-    if (!str) return '';
-    const match = str.match(/\(([^)]+)\)/);
-    return match ? match[1] : str; 
-  };
-  const originCode = getCode(from);
-  const destCode = getCode(to);
-
-  // --- HELPER: Airline Logos ---
-  const getAirlineLogo = (airlineName) => {
-    const logos = {
-      "IndiGo": "https://www.logo.wine/a/logo/IndiGo/IndiGo-Logo.wine.svg",
-      "Air India": "https://www.logo.wine/a/logo/Air_India/Air_India-Logo.wine.svg",
-      "Vistara": "https://www.logo.wine/a/logo/Vistara/Vistara-Logo.wine.svg",
-      "SpiceJet": "https://1000logos.net/wp-content/uploads/2021/07/SpiceJet-Logo.png",
-      "Akasa Air": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Akasa_Air_logo.svg/960px-Akasa_Air_logo.svg.png?20211225210806",
-      "AirAsia": "https://www.logo.wine/a/logo/AirAsia_India/AirAsia_India-Logo.wine.svg"
-    };
-    return logos[airlineName] || null;
+  const getCode = (str) => str ? str.match(/\(([^)]+)\)/)?.[1] || str : "";
+  
+  // Dynamic Title Logic
+  const getRouteTitle = () => {
+    if (searchParams.type === 'Multi-City') return "Multi-City Trip";
+    const f = getCode(searchParams.from || 'DEL');
+    const t = getCode(searchParams.to || 'BOM');
+    return `${airportMap[f]?.city || f} ${searchParams.type === 'Round Trip' ? '⇄' : '➝'} ${airportMap[t]?.city || t}`;
   };
 
-  // --- HELPER: Time Slots ---
-  const getTimeSlot = (timeStr) => {
-    const hour = parseInt(timeStr.split(':')[0]);
-    if (hour < 6) return 'Before 6 AM';
-    if (hour >= 6 && hour < 12) return '6 AM - 12 PM';
-    if (hour >= 12 && hour < 18) return '12 PM - 6 PM';
-    return 'After 6 PM';
-  };
-
-  // --- 1. FETCH DATA ---
   useEffect(() => {
     setLoading(true);
-    const FLIGHTS_API_URL = "https://gist.githubusercontent.com/ratnakarguru/9c7e9b4ffcdbf653fe8c467b470f2eec/raw";
+    const AIRPORTS_API = 'https://raw.githubusercontent.com/algolia/datasets/master/airports/airports.json';
+    const FLIGHTS_API = "https://gist.githubusercontent.com/ratnakarguru/9c7e9b4ffcdbf653fe8c467b470f2eec/raw";
 
-    fetch(FLIGHTS_API_URL)
-      .then(res => res.json())
-      .then(data => {
-        setTimeout(() => {
-          const matchedFlights = data
-            .filter(flight => {
-              if (!originCode || !destCode) return true;
-              return (
-                flight.origin?.toUpperCase() === originCode.toUpperCase() && 
-                flight.destination?.toUpperCase() === destCode.toUpperCase()
-              );
-            })
-            .map(flight => ({ ...flight, date: date }));
+    Promise.all([fetch(AIRPORTS_API).then(res => res.json()), fetch(FLIGHTS_API).then(res => res.json())])
+    .then(([airportsData, flightsData]) => {
+        const map = {};
+        airportsData.forEach(ap => { if(ap.iata_code) map[ap.iata_code] = { city: ap.city, name: ap.name }; });
+        setAirportMap(map);
 
-          setAllFlights(matchedFlights);
-          setFilteredFlights(matchedFlights); // Initialize filtered list
-          setLoading(false);
-        }, 800);
-      })
-      .catch(err => {
-        console.error(err);
-        setError("Failed to load flights.");
+        if (searchParams.type === 'Round Trip') {
+            // ... (Round Trip Logic same as before)
+            const fromCode = getCode(searchParams.from);
+            const toCode = getCode(searchParams.to);
+            let outFlights = flightsData.filter(f => f.origin === fromCode && f.destination === toCode);
+            let retFlights = flightsData.filter(f => f.origin === toCode && f.destination === fromCode);
+            
+            if (outFlights.length === 0) outFlights = [{...flightsData[0], origin: fromCode || 'DEL', destination: toCode || 'BOM', price: 5000, id: 901}];
+            if (retFlights.length === 0) retFlights = outFlights.map(f => ({...f, origin: toCode || 'BOM', destination: fromCode || 'DEL', id: f.id + 100}));
+
+            // Date & Price Randomization
+            const depRand = Math.floor(Math.random() * 500); 
+            const retRand = Math.floor(Math.random() * 500); 
+            outFlights = outFlights.map(f => ({ ...f, date: depDate, price: f.price + depRand }));
+            retFlights = retFlights.map(f => ({ ...f, date: retDate, price: f.price + retRand }));
+
+            setOutboundList(outFlights);
+            setReturnList(retFlights);
+            if(!selectedOutboundId && outFlights[0]) setSelectedOutboundId(outFlights[0].id);
+            if(!selectedReturnId && retFlights[0]) setSelectedReturnId(retFlights[0].id);
+
+        } else if (searchParams.type === 'Multi-City') {
+            // **FIXED MULTI-CITY LOGIC**
+            // Fallback if segments are missing
+            const segments = searchParams.segments && searchParams.segments.length > 0 
+                ? searchParams.segments 
+                : [
+                    {from: 'DEL', to: 'BOM', date: new Date().toDateString()},
+                    {from: 'BOM', to: 'BLR', date: new Date(new Date().setDate(new Date().getDate() + 2)).toDateString()}
+                  ];
+
+            const constructedItineraries = [];
+            
+            // Create 5 mock itinerary options
+            for(let i=0; i<5; i++) { 
+                const itineraryFlights = [];
+                let totalPrice = 0;
+                
+                segments.forEach((seg, idx) => {
+                    const fCode = getCode(seg.from);
+                    const tCode = getCode(seg.to);
+                    // Find a flight or use a fallback
+                    let matches = flightsData.filter(f => f.origin === fCode && f.destination === tCode);
+                    if(matches.length === 0) matches = [{...flightsData[0], origin: fCode, destination: tCode, price: 4000 + (idx*1000), id: 999+i+idx}];
+                    
+                    const flight = matches[i % matches.length];
+                    itineraryFlights.push({...flight, date: seg.date, price: flight.price});
+                    totalPrice += flight.price;
+                });
+                
+                constructedItineraries.push({ 
+                    id: i, 
+                    tripType: 'Multi-City', 
+                    flights: itineraryFlights, 
+                    totalPrice 
+                });
+            }
+            setItineraries(constructedItineraries);
+
+        } else {
+            // One Way Logic
+            const fromCode = getCode(searchParams.from);
+            const toCode = getCode(searchParams.to);
+            let matches = flightsData.filter(f => f.origin === fromCode && f.destination === toCode);
+            if(matches.length === 0) matches = [{...flightsData[0], origin: fromCode || 'DEL', destination: toCode || 'BOM', price: 4000, id: 888}];
+            const constructed = matches.map(f => ({ id: f.id, tripType: 'One Way', flights: [{...f, date: depDate}], totalPrice: f.price }));
+            setItineraries(constructed);
+        }
         setLoading(false);
-      });
-  }, [originCode, destCode, date]);
+    });
+  }, [searchParams, depDate, retDate]);
 
-  // --- 2. FILTER LOGIC ---
-  useEffect(() => {
-    let result = allFlights;
-
-    // Filter by Price
-    result = result.filter(flight => flight.price <= priceRange);
-
-    // Filter by Stops
-    if (selectedStops.length > 0) {
-      result = result.filter(flight => selectedStops.includes(flight.stops));
-    }
-
-    // Filter by Airlines
-    if (selectedAirlines.length > 0) {
-      result = result.filter(flight => selectedAirlines.includes(flight.airline));
-    }
-
-    // Filter by Time
-    if (selectedTimes.length > 0) {
-      result = result.filter(flight => selectedTimes.includes(getTimeSlot(flight.departureTime)));
-    }
-
-    setFilteredFlights(result);
-  }, [priceRange, selectedStops, selectedAirlines, selectedTimes, allFlights]);
-
-  // --- HANDLERS ---
-  const handleCheckboxChange = (e, state, setState) => {
-    const { value, checked } = e.target;
-    if (checked) {
-      setState([...state, value]);
-    } else {
-      setState(state.filter(item => item !== value));
-    }
+  const getAirlineLogo = (name) => {
+    const logos = { IndiGo: "https://www.logo.wine/a/logo/IndiGo/IndiGo-Logo.wine.svg", "Air India": "https://www.logo.wine/a/logo/Air_India/Air_India-Logo.wine.svg", Vistara: "https://www.logo.wine/a/logo/Vistara/Vistara-Logo.wine.svg", SpiceJet: "https://1000logos.net/wp-content/uploads/2021/07/SpiceJet-Logo.png", "Akasa Air": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Akasa_Air_logo.svg/960px-Akasa_Air_logo.svg.png?20211225210806" };
+    return logos[name] || null;
   };
 
-  const handleTimeSelect = (slot) => {
-    if (selectedTimes.includes(slot)) {
-      setSelectedTimes(selectedTimes.filter(t => t !== slot));
-    } else {
-      setSelectedTimes([...selectedTimes, slot]);
-    }
-  };
+  const filterList = (list) => list.filter(f => (!priceRange || f.price <= priceRange) && (selectedStops.length === 0 || selectedStops.includes(f.stops)) && (selectedAirlines.length === 0 || selectedAirlines.includes(f.airline)));
 
-  // Get unique airlines from available flights for the filter list
-  const uniqueAirlines = [...new Set(allFlights.map(f => f.airline))];
+  const filteredOutbound = filterList(outboundList);
+  const filteredReturn = filterList(returnList);
+  const selectedOutbound = outboundList.find(f => f.id === selectedOutboundId);
+  const selectedReturn = returnList.find(f => f.id === selectedReturnId);
+  const grandTotal = (selectedOutbound?.price || 0) + (selectedReturn?.price || 0);
+  const uniqueAirlines = [...new Set([...outboundList, ...returnList, ...itineraries.flatMap(i => i.flights.map(f=>f.airline))].map(f => f.airline || f))];
 
   return (
     <div className="bg-light min-vh-100 pb-5">
-      
-      {/* Top Header */}
+      {/* Header */}
       <div className="bg-dark text-white py-3 sticky-top shadow-sm" style={{ zIndex: 1020 }}>
-        <div className="container">
-          <div className="d-flex justify-content-between align-items-center">
+        <div className="container d-flex justify-content-between align-items-center">
             <div>
-              <h5 className="mb-0 fw-bold d-flex align-items-center gap-2">
-                {originCode || 'Origin'} <FaArrowRight size={14}/> {destCode || 'Dest'}
-              </h5>
-              <small className="text-white-50">{date} | 1 Adult | Economy</small>
+              <h5 className="mb-0 fw-bold">{getRouteTitle()}</h5>
+              <small className="text-white-50">{searchParams.type || 'One Way'} | Economy</small>
             </div>
-            <button className="btn btn-sm btn-outline-light rounded-pill px-4" onClick={() => navigate('/')}>
-              Modify Search
-            </button>
-          </div>
+            <button className="btn btn-sm btn-outline-light rounded-pill px-4" onClick={() => navigate("/")}>Modify</button>
         </div>
       </div>
 
+      {/* Render Dual Calendar for Round Trip, Single for others */}
+      {searchParams.type === 'Round Trip' ? (
+          <DualFareCalendar depDate={depDate} retDate={retDate} onDepChange={setDepDate} onRetChange={setRetDate} />
+      ) : (
+         <div className="container mt-3">
+             <CalendarStrip startDate={depDate} selectedDate={depDate} onDateSelect={setDepDate} minPrice={4000} />
+         </div>
+      )}
+
       <div className="container mt-4">
         <div className="row">
-          
-          {/* --- LEFT SIDEBAR (FILTERS) --- */}
-          <div className="col-lg-3">
-            <div className="card border-0 shadow-sm p-3 sticky-top" style={{ top: '90px' }}>
-              <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
-                <h6 className="fw-bold mb-0"><FaFilter className="me-2 text-primary"/>Filters</h6>
-                <button 
-                  className="btn btn-link btn-sm text-decoration-none p-0" 
-                  onClick={() => {
-                    setPriceRange(15000);
-                    setSelectedStops([]);
-                    setSelectedAirlines([]);
-                    setSelectedTimes([]);
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-
-              {/* 1. Price Filter */}
-              <div className="mb-4">
-                <label className="form-label small fw-bold text-muted">Max Price: ₹{priceRange.toLocaleString()}</label>
-                <input 
-                  type="range" 
-                  className="form-range" 
-                  min="3000" 
-                  max="20000" 
-                  step="500" 
-                  value={priceRange} 
-                  onChange={(e) => setPriceRange(Number(e.target.value))} 
-                />
-                <div className="d-flex justify-content-between small text-muted">
-                  <span>₹3k</span>
-                  <span>₹20k</span>
-                </div>
-              </div>
-
-              {/* 2. Stops Filter */}
-              <div className="mb-4">
-                <label className="form-label small fw-bold text-muted">Stops</label>
-                {['Non-Stop', '1 Stop', '2+ Stops'].map((stop) => (
-                  <div className="form-check" key={stop}>
-                    <input 
-                      className="form-check-input" 
-                      type="checkbox" 
-                      value={stop} 
-                      checked={selectedStops.includes(stop)}
-                      onChange={(e) => handleCheckboxChange(e, selectedStops, setSelectedStops)}
-                    />
-                    <label className="form-check-label small">{stop}</label>
-                  </div>
-                ))}
-              </div>
-
-              {/* 3. Departure Time Filter */}
-              <div className="mb-4">
-                <label className="form-label small fw-bold text-muted">Departure Time</label>
-                <div className="row g-2">
-                  {[
-                    { label: 'Before 6 AM', icon: <FaMoon/>, value: 'Before 6 AM' },
-                    { label: '6 AM - 12 PM', icon: <FaCloudSun/>, value: '6 AM - 12 PM' },
-                    { label: '12 PM - 6 PM', icon: <FaSun/>, value: '12 PM - 6 PM' },
-                    { label: 'After 6 PM', icon: <FaClock/>, value: 'After 6 PM' }
-                  ].map((time) => (
-                    <div className="col-6" key={time.value}>
-                      <button 
-                        className={`btn btn-sm w-100 d-flex flex-column align-items-center py-2 ${selectedTimes.includes(time.value) ? 'btn-primary text-white' : 'btn-outline-light text-dark border'}`}
-                        onClick={() => handleTimeSelect(time.value)}
-                      >
-                        <span className="mb-1">{time.icon}</span>
-                        <span style={{ fontSize: '0.7rem' }}>{time.label}</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 4. Airlines Filter */}
-              <div className="mb-3">
-                <label className="form-label small fw-bold text-muted">Airlines</label>
-                {uniqueAirlines.length > 0 ? uniqueAirlines.map((airline) => (
-                  <div className="form-check" key={airline}>
-                    <input 
-                      className="form-check-input" 
-                      type="checkbox" 
-                      value={airline}
-                      checked={selectedAirlines.includes(airline)}
-                      onChange={(e) => handleCheckboxChange(e, selectedAirlines, setSelectedAirlines)}
-                    />
-                    <div className="d-flex align-items-center justify-content-between w-100">
-                      <label className="form-check-label small ms-1">{airline}</label>
-                    </div>
-                  </div>
-                )) : <div className="small text-muted">No airlines found</div>}
-              </div>
-
-            </div>
-          </div>
-
-          {/* --- RIGHT COLUMN (RESULTS) --- */}
+          <FlightFilters 
+             priceRange={priceRange} setPriceRange={setPriceRange} selectedStops={selectedStops} setSelectedStops={setSelectedStops}
+             selectedAirlines={selectedAirlines} setSelectedAirlines={setSelectedAirlines} selectedDepTimes={selectedDepTimes} setSelectedDepTimes={setSelectedDepTimes}
+             selectedArrTimes={selectedArrTimes} setSelectedArrTimes={setSelectedArrTimes} uniqueAirlines={uniqueAirlines}
+          />
           <div className="col-lg-9">
             {loading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-primary" role="status"></div>
-                <p className="mt-2 text-muted">Scanning airlines...</p>
-              </div>
-            ) : error ? (
-              <div className="alert alert-danger">{error}</div>
-            ) : filteredFlights.length > 0 ? (
-              <>
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                   <h5 className="fw-bold text-dark mb-0">Flights from {originCode} to {destCode}</h5>
-                   <span className="badge bg-secondary">{filteredFlights.length} found</span>
-                </div>
-                
-                {filteredFlights.map((flight) => (
-                  <div key={flight.id} className="card border-0 shadow-sm mb-3 hover-shadow transition-all">
-                    <div className="card-body">
-                      <div className="row align-items-center text-center text-md-start">
-                        
-                        {/* AIRLINE LOGO & NAME */}
-                        <div className="col-md-3 mb-3 mb-md-0 d-flex align-items-center justify-content-center justify-content-md-start gap-3">
-                          <div style={{ width: '50px', height: '50px' }} className="d-flex align-items-center justify-content-center">
-                             {getAirlineLogo(flight.airline) ? (
-                               <img 
-                                 src={getAirlineLogo(flight.airline)} 
-                                 alt={flight.airline} 
-                                 className="img-fluid" 
-                                 style={{ maxHeight: '35px', objectFit: 'contain' }} 
-                               />
-                             ) : (
-                               <FaPlane size={24} className="text-secondary" />
-                             )}
-                          </div>
-                          <div>
-                            <div className="fw-bold text-dark">{flight.airline}</div>
-                            <div className="small text-muted">{flight.flightCode}</div>
-                          </div>
+              <div className="text-center py-5"><div className="spinner-border text-primary"></div></div>
+            ) : searchParams.type === 'Round Trip' ? (
+                <>
+                    <div className="row g-3">
+                        <div className="col-md-6">
+                            <div className="bg-white border rounded p-2" style={{minHeight: '500px'}}>
+                                <div className="text-muted small fw-bold mb-2">Select Departure</div>
+                                {filteredOutbound.map(f => <SelectableFlightCard key={f.id} flight={f} isSelected={selectedOutboundId === f.id} onSelect={(x) => setSelectedOutboundId(x.id)} getAirlineLogo={getAirlineLogo} airportMap={airportMap}/>)}
+                            </div>
                         </div>
-
-                        {/* TIMING & DURATION */}
-                        <div className="col-md-4 mb-3 mb-md-0">
-                          <div className="d-flex align-items-center justify-content-between px-2">
-                            <div className="text-center">
-                              <div className="h5 mb-0 fw-bold">{flight.departureTime}</div>
-                              <div className="small text-muted">{flight.origin}</div>
+                        <div className="col-md-6">
+                            <div className="bg-white border rounded p-2" style={{minHeight: '500px'}}>
+                                <div className="text-muted small fw-bold mb-2">Select Return</div>
+                                {filteredReturn.map(f => <SelectableFlightCard key={f.id} flight={f} isSelected={selectedReturnId === f.id} onSelect={(x) => setSelectedReturnId(x.id)} getAirlineLogo={getAirlineLogo} airportMap={airportMap}/>)}
                             </div>
-                            <div className="d-flex flex-column align-items-center small text-muted px-2">
-                              <span>{flight.duration}</span>
-                              <div className="border-top w-100 my-1 position-relative" style={{ borderColor: '#ddd', width: '60px' }}>
-                                <FaPlane className="position-absolute start-50 top-0 translate-middle text-secondary bg-white px-1" style={{ fontSize: '10px' }}/>
-                              </div>
-                              <span className="badge bg-light text-dark border">{flight.stops}</span>
-                            </div>
-                            <div className="text-center">
-                              <div className="h5 mb-0 fw-bold">{flight.arrivalTime}</div>
-                              <div className="small text-muted">{flight.destination}</div>
-                            </div>
-                          </div>
                         </div>
-
-                        {/* PRICE & BUTTON */}
-                        <div className="col-md-5 d-flex align-items-center justify-content-center justify-content-md-end gap-3 border-start-md ps-md-4">
-                          <div className="text-end">
-                            <div className="h4 mb-0 fw-bold d-flex align-items-center justify-content-end text-dark">
-                              <FaRupeeSign size={18}/> {flight.price.toLocaleString()}
+                    </div>
+                    {/* Sticky Footer for Round Trip */}
+                    <div className="fixed-bottom bg-white shadow-lg p-3 border-top" style={{zIndex: 1050}}>
+                        <div className="container">
+                            <div className="row align-items-center">
+                                <div className="col-md-8">
+                                    <div className="d-flex align-items-center gap-4">
+                                        <div><div className="small text-muted">Departure</div><div className="fw-bold">{selectedOutbound?.airline} {selectedOutbound?.flightCode}</div></div>
+                                        <FaExchangeAlt className="text-secondary"/>
+                                        <div><div className="small text-muted">Return</div><div className="fw-bold">{selectedReturn?.airline} {selectedReturn?.flightCode}</div></div>
+                                    </div>
+                                </div>
+                                <div className="col-md-4 text-end">
+                                    <div className="d-flex align-items-center justify-content-end gap-3">
+                                        <div><div className="small text-muted text-uppercase">Total Fare</div><div className="h4 mb-0 fw-bold">₹{grandTotal.toLocaleString()}</div></div>
+                                        <button className="btn btn-primary fw-bold px-4 rounded-pill">BOOK NOW</button>
+                                    </div>
+                                </div>
                             </div>
                             <div className="small text-success fw-bold" style={{ fontSize: '0.75rem' }}>Free Cancellation</div>
                           </div>
-                          <button 
-  className="btn fw-bold text-white rounded-pill px-4 shadow-sm" 
-  style={{ backgroundColor: '#ff6b00' }}
-  onClick={() => navigate('/book', { state: flight })}
->
-  BOOK
-</button>
+                          <button className="btn fw-bold text-white rounded-pill px-4 shadow-sm" style={{ backgroundColor: '#ff6b00' }}>
+                            BOOK
+                          </button>
                         </div>
 
                       </div>
                     </div>
-                  </div>
-                ))}
-              </>
+                    <div style={{height: '80px'}}></div> 
+                </>
             ) : (
-               <div className="text-center py-5 bg-white rounded shadow-sm">
-                 <FaFilter size={40} className="text-muted mb-3 opacity-25" />
-                 <h4>No flights match your filters</h4>
-                 <p className="text-muted">Try adjusting your price range or filters.</p>
-                 <button 
-                   className="btn btn-outline-primary mt-2" 
-                   onClick={() => {
-                     setPriceRange(20000);
-                     setSelectedStops([]);
-                     setSelectedAirlines([]);
-                     setSelectedTimes([]);
-                   }}
-                 >
-                   Clear Filters
-                 </button>
-               </div>
+                <>
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                        <h5 className="fw-bold text-dark mb-0">Available Flights</h5>
+                        <span className="badge bg-dark">{itineraries.length} Options</span>
+                    </div>
+                    {itineraries.map((itinerary) => (
+                        <StandardFlightCard key={itinerary.id} itinerary={itinerary} getAirlineLogo={getAirlineLogo} airportMap={airportMap} />
+                    ))}
+                </>
             )}
           </div>
         </div>
