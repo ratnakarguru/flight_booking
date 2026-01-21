@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   FaPlaneDeparture,
   FaPlaneArrival,
-  FaCalendarAlt,
   FaUser,
   FaPlus,
-  FaMinus
+  FaMinus,
+  FaExclamationCircle // Imported for error display
 } from 'react-icons/fa';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -16,7 +16,7 @@ const getTodayDate = () => {
 };
 
 // --- REUSABLE COMPONENT: Airport Search ---
-const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }) => {
+const AirportInput = ({ label, icon, value, onChange, placeholder, airportList, isInvalid }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const wrapperRef = useRef(null);
@@ -57,7 +57,7 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
   return (
     <div className="position-relative" ref={wrapperRef}>
       {label && <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>{label}</label>}
-      <div className="input-group input-group-sm">
+      <div className={`input-group input-group-sm ${isInvalid ? 'border border-danger rounded' : ''}`}>
         <span className="input-group-text bg-light border-end-0 text-secondary">{icon}</span>
         <input
           type="text"
@@ -82,7 +82,7 @@ const AirportInput = ({ label, icon, value, onChange, placeholder, airportList }
   );
 };
 
-// --- COMPONENT: Traveller Selector (UPDATED DISPLAY) ---
+// --- COMPONENT: Traveller Selector ---
 const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -99,21 +99,18 @@ const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => 
     setCounts(prev => {
       let newVal = operation === 'inc' ? prev[type] + 1 : prev[type] - 1;
       if (newVal < 0) newVal = 0;
-      if (type === 'adults' && newVal < 1) newVal = 1; // Min 1 adult
+      if (type === 'adults' && newVal < 1) newVal = 1; 
       return { ...prev, [type]: newVal };
     });
   };
 
-  // --- LOGIC: Create a string like "2 Adt, 1 Chd, Economy" ---
   const getTravellerSummary = () => {
     let parts = [];
     if (counts.adults > 0) parts.push(`${counts.adults} Adt`);
     if (counts.children > 0) parts.push(`${counts.children} Chd`);
     if (counts.infants > 0) parts.push(`${counts.infants} Inf`);
     
-    // Fallback if empty (shouldn't happen due to min 1 adult)
     const paxString = parts.length > 0 ? parts.join(', ') : '1 Traveller';
-    
     return `${paxString}, ${cabinClass}`;
   };
 
@@ -128,7 +125,7 @@ const TravellerSelector = ({ counts, setCounts, cabinClass, setCabinClass }) => 
         <input
           type="text"
           className="form-control border-0 bg-transparent shadow-none"
-          value={getTravellerSummary()} // <--- Using new summary function
+          value={getTravellerSummary()} 
           readOnly
           style={{ cursor: 'pointer', fontSize: '0.8rem', textOverflow: 'ellipsis' }}
         />
@@ -203,6 +200,7 @@ const HeroSection = () => {
   const navigate = useNavigate();
   const [tripType, setTripType] = useState('oneWay');
   const [airportData, setAirportData] = useState([]);
+  const [error, setError] = useState(''); // NEW: Error state
   
   // Search States
   const [standardFrom, setStandardFrom] = useState('');
@@ -226,17 +224,86 @@ const HeroSection = () => {
       });
   }, []);
 
+  // --- NEW: Validation Logic ---
+  const validateSearch = () => {
+    setError('');
+
+    if (tripType === 'multi') {
+      for (let i = 0; i < multiCitySegments.length; i++) {
+        const seg = multiCitySegments[i];
+        
+        // Check for Empty Fields
+        if (!seg.from.trim() || !seg.to.trim()) {
+          setError(`Please select both origin and destination for Flight ${i + 1}.`);
+          return false;
+        }
+
+        // Check for Same Airports
+        if (seg.from.trim().toLowerCase() === seg.to.trim().toLowerCase()) {
+          setError(`Origin and Destination cannot be the same for Flight ${i + 1}.`);
+          return false;
+        }
+
+        // Check Date
+        if (!seg.date) {
+            setError(`Please select a date for Flight ${i + 1}.`);
+            return false;
+        }
+
+        // Date Continuity (Flight 2 cannot be before Flight 1)
+        if (i > 0) {
+            const prevDate = new Date(multiCitySegments[i-1].date);
+            const currDate = new Date(seg.date);
+            if (currDate < prevDate) {
+                setError(`Flight ${i+1} cannot depart before Flight ${i}.`);
+                return false;
+            }
+        }
+      }
+    } else {
+      // Standard OneWay/Return Validation
+      if (!standardFrom.trim()) {
+        setError('Please select an Origin airport.');
+        return false;
+      }
+      if (!standardTo.trim()) {
+        setError('Please select a Destination airport.');
+        return false;
+      }
+      if (standardFrom.trim().toLowerCase() === standardTo.trim().toLowerCase()) {
+        setError('Origin and Destination cannot be the same.');
+        return false;
+      }
+      if (!standardDate) {
+        setError('Please select a departure date.');
+        return false;
+      }
+
+      if (tripType === 'return') {
+        if (!returnDate) {
+          setError("Please select a return date.");
+          return false;
+        }
+        if (new Date(returnDate) < new Date(standardDate)) {
+          setError("Return date cannot be before departure date.");
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
   // --- SEARCH HANDLER ---
   const handleSearch = () => {
-    // Validation: Require Return Date if "Return" trip type is selected
-    if (tripType === 'return' && !returnDate) {
-      alert("Please select a return date.");
-      return; 
+    // 1. Run Validation
+    if (!validateSearch()) {
+      return; // Stop if invalid
     }
 
+    // 2. Prepare Data
     let searchData = {
       tripType: tripType,
-      travellers: travellerCounts, // Passing full object {adults, children, infants}
+      travellers: travellerCounts,
       cabinClass: cabinClass
     };
 
@@ -253,7 +320,7 @@ const HeroSection = () => {
         from: standardFrom,
         to: standardTo,
         date: standardDate,
-        returnDate: tripType === 'return' ? returnDate : null // <--- Pass Return Date
+        returnDate: tripType === 'return' ? returnDate : null
       };
     }
 
@@ -264,13 +331,15 @@ const HeroSection = () => {
   // Multi-City Helpers
   const handleSegmentChange = (id, field, value) => {
     setMultiCitySegments(multiCitySegments.map(s => s.id === id ? { ...s, [field]: value } : s));
+    setError(''); // Clear error on change
   };
 
   const handleAddSegment = () => {
     const newId = multiCitySegments.length > 0 ? Math.max(...multiCitySegments.map(s => s.id)) + 1 : 1;
     const lastSegment = multiCitySegments[multiCitySegments.length - 1];
     const previousDestination = lastSegment ? lastSegment.to : '';
-    setMultiCitySegments([...multiCitySegments, { id: newId, from: previousDestination, to: '', date: getTodayDate() }]);
+    const previousDate = lastSegment ? lastSegment.date : getTodayDate();
+    setMultiCitySegments([...multiCitySegments, { id: newId, from: previousDestination, to: '', date: previousDate }]);
   };
 
   const handleRemoveSegment = (id) => {
@@ -278,7 +347,6 @@ const HeroSection = () => {
   };
 
   const bgImage = "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80";
-  const brandOrange = '#ff6b00';
 
   return (
     <div 
@@ -294,13 +362,21 @@ const HeroSection = () => {
       <div className="container">
         <div className="card border-0 shadow-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)' }}>
           <div className="card-body p-3 p-md-4">
+            
+            {/* NEW: Validation Error Alert */}
+            {error && (
+              <div className="alert alert-danger d-flex align-items-center py-2 mb-3" role="alert">
+                <FaExclamationCircle className="me-2" />
+                <div style={{ fontSize: '0.9rem' }}>{error}</div>
+              </div>
+            )}
 
             {/* Tabs */}
             <div className="d-flex gap-2 mb-4 overflow-auto pb-1">
               {['oneWay', 'return', 'multi'].map((type) => (
                 <button
                   key={type}
-                  onClick={() => setTripType(type)}
+                  onClick={() => { setTripType(type); setError(''); }}
                   className={`btn rounded-pill px-3 py-1 fw-bold text-nowrap ${tripType === type ? 'btn-dark' : 'btn-outline-secondary'}`}
                   style={{ fontSize: '0.8rem' }}
                 >
@@ -321,7 +397,8 @@ const HeroSection = () => {
                         placeholder="From" 
                         value={segment.from} 
                         onChange={(v) => handleSegmentChange(segment.id, 'from', v)} 
-                        airportList={airportData} 
+                        airportList={airportData}
+                        isInvalid={error && !segment.from} 
                       />
                     </div>
                     <div className="col-6 col-md-3">
@@ -332,11 +409,18 @@ const HeroSection = () => {
                         value={segment.to} 
                         onChange={(v) => handleSegmentChange(segment.id, 'to', v)} 
                         airportList={airportData} 
+                        isInvalid={error && !segment.to}
                       />
                     </div>
                     <div className="col-6 col-md-2">
                       {index === 0 && <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Date</label>}
-                      <input type="date" className="form-control form-control-sm bg-light border-1" value={segment.date} min={getTodayDate()} onChange={(e) => handleSegmentChange(segment.id, 'date', e.target.value)} />
+                      <input 
+                        type="date" 
+                        className="form-control form-control-sm bg-light border-1" 
+                        value={segment.date} 
+                        min={index === 0 ? getTodayDate() : multiCitySegments[index-1]?.date}
+                        onChange={(e) => handleSegmentChange(segment.id, 'date', e.target.value)} 
+                      />
                     </div>
 
                     {index === 0 ? (
@@ -366,17 +450,32 @@ const HeroSection = () => {
               // --- STANDARD VIEW (One Way / Return) ---
               <div className="row g-2">
                 <div className="col-6 col-md-2">
-                  <AirportInput label="From" icon={<FaPlaneDeparture />} placeholder="Origin" value={standardFrom} onChange={setStandardFrom} airportList={airportData} />
+                  <AirportInput 
+                    label="From" 
+                    icon={<FaPlaneDeparture />} 
+                    placeholder="Origin" 
+                    value={standardFrom} 
+                    onChange={(v) => { setStandardFrom(v); setError(''); }} 
+                    airportList={airportData}
+                    isInvalid={error && !standardFrom} 
+                  />
                 </div>
                 <div className="col-6 col-md-2">
-                  <AirportInput label="To" icon={<FaPlaneArrival />} placeholder="Dest" value={standardTo} onChange={setStandardTo} airportList={airportData} />
+                  <AirportInput 
+                    label="To" 
+                    icon={<FaPlaneArrival />} 
+                    placeholder="Dest" 
+                    value={standardTo} 
+                    onChange={(v) => { setStandardTo(v); setError(''); }} 
+                    airportList={airportData}
+                    isInvalid={error && !standardTo}
+                  />
                 </div>
                 <div className="col-6 col-md-2">
                   <label className="form-label text-muted small fw-bold text-uppercase mb-1" style={{ fontSize: '0.7rem' }}>Depart</label>
                   <input type="date" className="form-control form-control-sm" value={standardDate} min={getTodayDate()} onChange={(e) => setStandardDate(e.target.value)} />
                 </div>
                 
-                {/* --- RETURN DATE FIELD --- */}
                 <div className="col-6 col-md-2">
                   <label className={`form-label small fw-bold text-uppercase mb-1 ${tripType === 'oneWay' ? 'text-muted' : 'text-dark'}`} style={{ fontSize: '0.7rem' }}>
                     Return
@@ -387,7 +486,7 @@ const HeroSection = () => {
                     disabled={tripType === 'oneWay'} 
                     min={standardDate} 
                     value={returnDate} 
-                    onChange={(e) => setReturnDate(e.target.value)} 
+                    onChange={(e) => { setReturnDate(e.target.value); setError(''); }} 
                   />
                 </div>
 
